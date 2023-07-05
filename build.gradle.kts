@@ -81,7 +81,6 @@ dependencies {
     shadow(libs.exposed.jdbc)
     shadow(libs.exposed.java.time)
     shadow(libs.sqlite.jdbc)
-    shadow(libs.hikari.cp)
     
     // Mixin
     modImplementationAndInclude(libs.mixin.extras)
