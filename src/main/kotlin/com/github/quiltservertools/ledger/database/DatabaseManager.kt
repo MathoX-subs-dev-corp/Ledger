@@ -155,29 +155,17 @@ object DatabaseManager {
         return@execute selectActionsPreview(params, type)
     }
 
-    private fun <ID : Comparable<ID>, T : Entity<ID>> getMappedResultsById(items: SizedIterable<T>): Map<EntityID<ID>, T> {
-        return items.associateBy { it.id }
-    }
+    private fun <ID : Comparable<ID>, T : Entity<ID>> getMappedResultsById(items: SizedIterable<T>): Map<EntityID<ID>, T> = items.associateBy { it.id }
 
-    private fun getMappedActionIdentifiers(items:  SizedIterable<Tables.ActionIdentifier>): Map<String, Tables.ActionIdentifier> {
-        return items.associateBy { it.identifier }
-    }
+    private fun getMappedActionIdentifiers(items:  SizedIterable<Tables.ActionIdentifier>): Map<String, Tables.ActionIdentifier> = items.associateBy { it.identifier }
 
-    private fun getMappedWorlds(items:  SizedIterable<Tables.World>): Map<Identifier, Tables.World> {
-        return items.associateBy { it.identifier }
-    }
+    private fun getMappedWorlds(items:  SizedIterable<Tables.World>): Map<Identifier, Tables.World> = items.associateBy { it.identifier }
 
-    private fun getMappedPlayers(items:  SizedIterable<Tables.Player>): Map<String, Tables.Player> {
-        return items.associateBy { it.playerName }
-    }
+    private fun getMappedPlayers(items:  SizedIterable<Tables.Player>): Map<String, Tables.Player> = items.associateBy { it.playerName }
 
-    private fun getMappedObjectIdentifiers(items:  SizedIterable<Tables.ObjectIdentifier>): Map<Identifier, Tables.ObjectIdentifier> {
-        return items.associateBy { it.identifier }
-    }
+    private fun getMappedObjectIdentifiers(items:  SizedIterable<Tables.ObjectIdentifier>): Map<Identifier, Tables.ObjectIdentifier> = items.associateBy { it.identifier }
 
-    private fun getMappedSources(items:  SizedIterable<Tables.Source>): Map<String, Tables.Source> {
-        return items.associateBy { it.name }
-    }
+    private fun getMappedSources(items:  SizedIterable<Tables.Source>): Map<String, Tables.Source> = items.associateBy { it.name }
 
     private fun getActionsFromQuery(
         query: Query,
@@ -529,7 +517,6 @@ object DatabaseManager {
     }
 
     private fun Transaction.selectActionsSearch(params: ActionSearchParams, page: Int): SearchResults {
-        
         val actionIdentifiers = Tables.ActionIdentifier.all()
         val worlds = Tables.World.all()
         val players = Tables.Player.all()

@@ -551,7 +551,7 @@ style:
   LibraryEntitiesShouldNotBePublic:
     active: true
   LoopWithTooManyJumpStatements:
-    active: true
+    active: false
     maxJumpCount: 3
   MagicNumber:
     active: true
