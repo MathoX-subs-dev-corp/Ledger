@@ -75,17 +75,6 @@ object Tables {
             index("actions_by_location", false, x, y, z, world)
             index("actions_by_time", false, timestamp)
         }
-
-        //TODO idk feels like a hack
-        // MySQL should really be smart enough to pick the right index, something isn't right
-        // also is this necessary for other databases?
-        override fun describe(transaction: Transaction, queryBuilder: QueryBuilder) {
-            super.describe(transaction, queryBuilder)
-
-            if (queryBuilder.toString().startsWith("SELECT") && transaction.db.vendor == "mysql") {
-                queryBuilder.append(" USE INDEX (actions_by_location, actions_by_time)")
-            }
-        }
     }
 
     class Action(id: EntityID<Int>) : IntEntity(id) {

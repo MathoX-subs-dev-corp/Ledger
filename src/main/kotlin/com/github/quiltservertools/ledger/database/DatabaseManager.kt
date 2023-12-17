@@ -21,11 +21,14 @@ import net.minecraft.nbt.StringNbtReader
 import net.minecraft.util.Identifier
 import net.minecraft.util.WorldSavePath
 import net.minecraft.util.math.BlockPos
+import org.jetbrains.exposed.dao.Entity
+import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.Query
 import org.jetbrains.exposed.sql.SchemaUtils
+import org.jetbrains.exposed.sql.SizedIterable
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlLogger
 import org.jetbrains.exposed.sql.Transaction
@@ -152,7 +155,33 @@ object DatabaseManager {
         return@execute selectActionsPreview(params, type)
     }
 
-    private fun getActionsFromQuery(query: Query): List<ActionType> {
+    private fun <ID : Comparable<ID>, T : Entity<ID>> getMappedResultsById(items: SizedIterable<T>): Map<EntityID<ID>, T> {
+        return items.associateBy { it.id }
+    }
+
+    private fun getMappedActionIdentifiers(items:  SizedIterable<Tables.ActionIdentifier>): Map<String, Tables.ActionIdentifier> {
+        return items.associateBy { it.identifier }
+    }
+
+    private fun getMappedWorlds(items:  SizedIterable<Tables.World>): Map<Identifier, Tables.World> {
+        return items.associateBy { it.identifier }
+    }
+
+    private fun getMappedPlayers(items:  SizedIterable<Tables.Player>): Map<String, Tables.Player> {
+        return items.associateBy { it.playerName }
+    }
+
+    private fun getMappedObjectIdentifiers(items:  SizedIterable<Tables.ObjectIdentifier>): Map<Identifier, Tables.ObjectIdentifier> {
+        return items.associateBy { it.identifier }
+    }
+
+    private fun getMappedSources(items:  SizedIterable<Tables.Source>): Map<String, Tables.Source> {
+        return items.associateBy { it.name }
+    }
+
+    private fun getActionsFromQuery(
+        query: Query,
+    ): List<ActionType> {
         val actions = mutableListOf<ActionType>()
 
         for (action in query) {
@@ -168,8 +197,8 @@ object DatabaseManager {
             type.world = Identifier.tryParse(action[Tables.Worlds.identifier])
             type.objectIdentifier = Identifier(action[Tables.ObjectIdentifiers.identifier])
             type.oldObjectIdentifier = Identifier(
-            action[Tables.ObjectIdentifiers.alias("oldObjects")[Tables.ObjectIdentifiers.identifier]]
-        )
+                action[Tables.ObjectIdentifiers.alias("oldObjects")[Tables.ObjectIdentifiers.identifier]]
+            )
             type.blockState = action[Tables.Actions.blockState]?.let {
                 NbtUtils.blockStateFromProperties(
                     StringNbtReader.parse(it),
@@ -186,6 +215,79 @@ object DatabaseManager {
             type.sourceProfile = action.getOrNull(Tables.Players.playerId)?.let {
                 GameProfile(it, action[Tables.Players.playerName])
             }
+            type.extraData = action[Tables.Actions.extraData]
+            type.rolledBack = action[Tables.Actions.rolledBack]
+
+            actions.add(type)
+        }
+
+        return actions
+    }
+
+    private fun getActionsFromSimpleQuery(
+        query: Query,
+        actionIdentifiersById: Map<EntityID<Int>, Tables.ActionIdentifier>,
+        worldsById: Map<EntityID<Int>, Tables.World>,
+        playersById: Map<EntityID<Int>, Tables.Player>,
+        objectIdentifiersById: Map<EntityID<Int>, Tables.ObjectIdentifier>,
+        sourcesById: Map<EntityID<Int>, Tables.Source>,
+    ): List<ActionType> {
+        val actions = mutableListOf<ActionType>()
+
+        for (action in query) {
+            val actionIdentifier = actionIdentifiersById[action[Tables.Actions.actionIdentifier]];
+            val typeSupplier = if (actionIdentifier != null) ActionRegistry.getType(actionIdentifier.identifier) else null
+            if (typeSupplier == null) {
+                logWarn("Unknown action type $actionIdentifier")
+                continue
+            }
+
+            val type = typeSupplier.get()
+            type.timestamp = action[Tables.Actions.timestamp]
+            type.pos = BlockPos(action[Tables.Actions.x], action[Tables.Actions.y], action[Tables.Actions.z])
+
+            val world = worldsById[action[Tables.Actions.world]];
+            type.world = world?.identifier
+
+            val objectIdentifier = objectIdentifiersById[action[Tables.Actions.objectId]];
+
+            if (objectIdentifier === null) {
+                logWarn("Unknown object ${action[Tables.Actions.objectId]}")
+                continue
+            }
+
+            type.objectIdentifier = objectIdentifier.identifier
+
+            val oldObjectIdentifier = objectIdentifiersById[action[Tables.Actions.oldObjectId]];
+
+            if (oldObjectIdentifier === null) {
+                logWarn("Unknown object ${action[Tables.Actions.oldObjectId]}")
+                continue
+            }
+
+            type.oldObjectIdentifier = oldObjectIdentifier.identifier
+            type.blockState = action[Tables.Actions.blockState]?.let {
+                NbtUtils.blockStateFromProperties(
+                    StringNbtReader.parse(it),
+                    type.objectIdentifier
+                )
+            }
+            type.oldBlockState = action[Tables.Actions.oldBlockState]?.let {
+                NbtUtils.blockStateFromProperties(
+                    StringNbtReader.parse(it),
+                    type.oldObjectIdentifier
+                )
+            }
+
+            val source = sourcesById[action[Tables.Actions.sourceName]]
+            if (source === null) {
+                logWarn("Unknown source ${action[Tables.Actions.sourceName]}")
+                continue
+            }
+            type.sourceName = source.name
+            val playerId = action[Tables.Actions.sourcePlayer]
+            val player = if (playerId != null) playersById[action[Tables.Actions.sourcePlayer]] else null
+            type.sourceProfile = if (player != null) GameProfile(player.playerId, player.playerName) else null
             type.extraData = action[Tables.Actions.extraData]
             type.rolledBack = action[Tables.Actions.rolledBack]
 
@@ -427,18 +529,210 @@ object DatabaseManager {
     }
 
     private fun Transaction.selectActionsSearch(params: ActionSearchParams, page: Int): SearchResults {
+        
+        val actionIdentifiers = Tables.ActionIdentifier.all()
+        val worlds = Tables.World.all()
+        val players = Tables.Player.all()
+        val objectIdentifiers = Tables.ObjectIdentifier.all()
+        val sources = Tables.Source.all()
+
+        val actionIdentifiersBySearch = getMappedActionIdentifiers(actionIdentifiers)
+        val worldsBySearch = getMappedWorlds(worlds)
+        val playersBySearch = getMappedPlayers(players)
+        val objectIdentifiersBySearch = getMappedObjectIdentifiers(objectIdentifiers)
+        val sourcesBySearch = getMappedSources(sources)
+
+        val actionIdentifiersById = getMappedResultsById(actionIdentifiers)
+        val worldsById = getMappedResultsById(worlds)
+        val playersById = getMappedResultsById(players)
+        val objectIdentifiersById = getMappedResultsById(objectIdentifiers)
+        val sourcesById = getMappedResultsById(sources)
+
+        val processedParams = ActionSearchParams(
+            params.bounds,
+            params.before,
+            params.after,
+            null,
+            null,
+            null,
+            null,
+            null,
+        )
+
+        var baseOp = buildQueryParams(processedParams)
+        var forceEmptyResultSet = false
+
+        // Actions
+
+        var actionsParams: MutableSet<Negatable<EntityID<Int>>>? = null;
+
+        if (params.actions != null) {
+
+            for (item in params.actions!!) {
+                val foundItem = actionIdentifiersBySearch[item.property]
+
+                if (foundItem == null) {
+                    if (item.allowed) {
+                        forceEmptyResultSet = true
+                    }
+                }
+                else {
+                    val itemIdCriteria = Negatable(foundItem.id, item.allowed)
+
+                    if (actionsParams == null) {
+                        actionsParams = mutableSetOf(itemIdCriteria)
+                    } else {
+                        actionsParams.add(itemIdCriteria)
+                    }
+                }
+            }
+        }
+
+        baseOp = addParameters(
+            baseOp,
+            actionsParams,
+            Tables.Actions.actionIdentifier
+        )
+
+        // Worlds
+
+        var worldsParams: MutableSet<Negatable<EntityID<Int>>>? = null;
+
+        if (params.worlds != null) {
+
+            for (item in params.worlds!!) {
+                val foundItem = worldsBySearch[item.property]
+
+                if (foundItem == null) {
+                    if (item.allowed) {
+                        forceEmptyResultSet = true
+                    }
+                }
+                else {
+                    val itemIdCriteria = Negatable(foundItem.id, item.allowed)
+
+                    if (worldsParams == null) {
+                        worldsParams = mutableSetOf(itemIdCriteria)
+                    } else {
+                        worldsParams.add(itemIdCriteria)
+                    }
+                }
+            }
+        }
+
+        baseOp = addParameters(
+            baseOp,
+            worldsParams,
+            Tables.Actions.world
+        )
+
+        // Players
+
+        var playersParams: MutableSet<Negatable<EntityID<Int>>>? = null;
+
+        if (params.sourcePlayerNames != null) {
+
+            for (item in params.sourcePlayerNames!!) {
+                val foundItem = playersBySearch[item.property]
+
+                if (foundItem == null) {
+                    if (item.allowed) {
+                        forceEmptyResultSet = true
+                    }
+                }
+                else {
+                    val itemIdCriteria = Negatable(foundItem.id, item.allowed)
+
+                    if (playersParams == null) {
+                        playersParams = mutableSetOf(itemIdCriteria)
+                    } else {
+                        playersParams.add(itemIdCriteria)
+                    }
+                }
+            }
+        }
+
+        baseOp = addParameters(
+            baseOp,
+            playersParams,
+            Tables.Actions.sourcePlayer as Column<EntityID<Int>>
+        )
+
+        // Objects
+
+        var objectIdentifiersParams: MutableSet<Negatable<EntityID<Int>>>? = null;
+
+        if (params.objects != null) {
+
+            for (item in params.objects!!) {
+                val foundItem = objectIdentifiersBySearch[item.property]
+
+                if (foundItem == null) {
+                    if (item.allowed) {
+                        forceEmptyResultSet = true
+                    }
+                }
+                else {
+                    val itemIdCriteria = Negatable(foundItem.id, item.allowed)
+
+                    if (objectIdentifiersParams == null) {
+                        objectIdentifiersParams = mutableSetOf(itemIdCriteria)
+                    } else {
+                        objectIdentifiersParams.add(itemIdCriteria)
+                    }
+                }
+            }
+        }
+
+        baseOp = addParameters(
+            baseOp,
+            objectIdentifiersParams,
+            Tables.Actions.objectId,
+            Tables.Actions.oldObjectId,
+        )
+
+        // Sources
+
+        var sourcesParams: MutableSet<Negatable<EntityID<Int>>>? = null;
+
+        if (params.sourceNames != null) {
+
+            for (item in params.sourceNames!!) {
+                val foundItem = sourcesBySearch[item.property]
+
+                if (foundItem == null) {
+                    if (item.allowed) {
+                        forceEmptyResultSet = true
+                    }
+                }
+                else {
+                    val itemIdCriteria = Negatable(foundItem.id, item.allowed)
+
+                    if (sourcesParams == null) {
+                        sourcesParams = mutableSetOf(itemIdCriteria)
+                    } else {
+                        sourcesParams.add(itemIdCriteria)
+                    }
+                }
+            }
+        }
+
+        baseOp = addParameters(
+            baseOp,
+            sourcesParams,
+            Tables.Actions.sourceName,
+        )
+
+        // ----
+
         val actions = mutableListOf<ActionType>()
         var totalActions: Long
 
+        if (forceEmptyResultSet) return SearchResults(actions, params, page, 0)
+
         var query = Tables.Actions
-            .innerJoin(Tables.ActionIdentifiers)
-            .innerJoin(Tables.Worlds)
-            .leftJoin(Tables.Players)
-            .innerJoin(Tables.oldObjectTable, { Tables.Actions.oldObjectId }, { Tables.oldObjectTable[Tables.ObjectIdentifiers.id] })
-            .innerJoin(Tables.ObjectIdentifiers, { Tables.Actions.objectId }, { Tables.ObjectIdentifiers.id })
-            .innerJoin(Tables.Sources)
             .selectAll()
-            .andWhere { buildQueryParams(params) }
+            .andWhere { baseOp }
 
         totalActions = query.copy().count()
         if (totalActions == 0L) return SearchResults(actions, params, page, 0)
@@ -449,7 +743,14 @@ object DatabaseManager {
             (config[SearchSpec.pageSize] * (page - 1)).toLong()
         ) // TODO better pagination without offset - probably doesn't matter as most people stay on first few pages
 
-        actions.addAll(getActionsFromQuery(query))
+        actions.addAll(getActionsFromSimpleQuery(
+            query,
+            actionIdentifiersById,
+            worldsById,
+            playersById,
+            objectIdentifiersById,
+            sourcesById,
+        ))
 
         val totalPages = ceil(totalActions.toDouble() / config[SearchSpec.pageSize].toDouble()).toInt()
 
