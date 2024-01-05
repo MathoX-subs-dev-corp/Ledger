@@ -188,7 +188,7 @@ publishing {
 
     // select the repositories you want to publish to
     repositories {
-        // mavenLocal()
+        mavenLocal()
     }
 }
 

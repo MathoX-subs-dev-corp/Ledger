@@ -1,9 +1,9 @@
 [versions]
-minecraft = "1.20"
-yarn-mappings = "1.20+build.1"
+minecraft = "1.20.1"
+yarn-mappings = "1.20.1+build.10"
 fabric-loader = "0.14.21"
 
-fabric-api = "0.83.0+1.20"
+fabric-api = "0.83.0+1.20.1"
 
 # Kotlin
 kotlin = "1.8.22"
@@ -48,6 +48,6 @@ wdmcf = { module = "me.bymartrixx:wdmcf", version.ref = "wdmcf" }
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version = "1.19.0" }
-loom = { id = "fabric-loom", version = "1.2.+" }
+loom = { id = "fabric-loom", version = "1.4.+" }
 git_hooks = { id = "com.github.jakemarsden.git-hooks", version = "0.0.2" }
 shadow = { id = "com.github.johnrengelman.shadow", version = "7.1.2" }
