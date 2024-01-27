@@ -43,7 +43,7 @@ import kotlin.time.Duration.Companion.seconds
 import com.github.quiltservertools.ledger.config.config as realConfig
 
 object Ledger : DedicatedServerModInitializer, CoroutineScope {
-    const val MOD_ID = "ledger"
+    const val MOD_ID = "ledger-f-edition"
     const val DEFAULT_DATABASE = SQLiteDialect.dialectName
 
     @JvmStatic
@@ -58,13 +58,15 @@ object Ledger : DedicatedServerModInitializer, CoroutineScope {
     override val coroutineContext: CoroutineContext = Dispatchers.IO
 
     override fun onInitializeServer() {
-        val version = FabricLoader.getInstance().getModContainer(MOD_ID).get().metadata.version
+        val modContainer = FabricLoader.getInstance().getModContainer(MOD_ID)
+        if (!modContainer.isPresent) return
+        val version = modContainer.get().metadata.version
         logInfo("Initializing Ledger ${version.friendlyString}")
 
         if (!Files.exists(FabricLoader.getInstance().configDir.resolve(CONFIG_PATH))) {
             logInfo("No config file, Creating")
             Files.copy(
-                FabricLoader.getInstance().getModContainer(MOD_ID).get().getPath(CONFIG_PATH),
+                modContainer.get().getPath(CONFIG_PATH),
                 FabricLoader.getInstance().configDir.resolve(CONFIG_PATH)
             )
         }
