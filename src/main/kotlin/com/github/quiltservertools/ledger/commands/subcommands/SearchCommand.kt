@@ -6,6 +6,7 @@ import com.github.quiltservertools.ledger.commands.BuildableCommand
 import com.github.quiltservertools.ledger.commands.CommandConsts
 import com.github.quiltservertools.ledger.commands.arguments.SearchParamArgument
 import com.github.quiltservertools.ledger.database.DatabaseManager
+import com.github.quiltservertools.ledger.logInfo
 import com.github.quiltservertools.ledger.utility.Context
 import com.github.quiltservertools.ledger.utility.LiteralNode
 import com.github.quiltservertools.ledger.utility.MessageUtils
@@ -28,6 +29,7 @@ object SearchCommand : BuildableCommand {
 
     private fun search(context: Context, params: ActionSearchParams): Int {
         val source = context.source
+        logInfo("${source.name} did \"${context.input}\"")
         if (params.isEmpty()) {
             source.sendError(Text.translatable("error.ledger.command.no_params"))
             return -1
@@ -40,9 +42,11 @@ object SearchCommand : BuildableCommand {
             val results = DatabaseManager.searchActions(params, 1)
 
             if (results.actions.isEmpty()) {
+                logInfo("\"${context.input}\" finished with no result")
                 source.sendError(Text.translatable("error.ledger.command.no_results"))
                 return@launch
             }
+            logInfo("\"${context.input}\" finished with ${results.pages} pages of informations")
 
             MessageUtils.sendSearchResults(
                 source,
